@@ -1,84 +1,94 @@
+from datetime import time
+from typing import List, Optional
+
 import pandas as pd
-from sklearn.linear_model import LinearRegression, RidgeCV
-
-from datetime import *
-
-supply_words = ["pan", "rasp", "kom"]
+from sklearn.linear_model import LinearRegression
 
 
-
-
-
-def getRecipesDF():
-    df = pd.read_csv("data/lunch_recipes.csv")  # Read lunch recipes dataframe.
-    for wrd in supply_words:
-        def hulp_clean(text):
-            # This function cleans text by seperating all the words and removing punctution
-            #
-            # text:str
-
-            str_list = [''.join(O for O in str if O.isalnum()) for str in text.split()]
-            str_list = [str.lower() for str in str_list]
-            return str_list
-
-        df[f"{wrd}"] = df.recipe.apply(lambda text: hulp_clean(text).count(wrd) >0) ## count the amount of times a word occurs in the recipe.
-        df[f"{wrd}"] = df[f"{wrd}"].apply(lambda x: x is True)
-    df = df.drop('servings', axis= 1)
-    df = df.drop('recipe', axis= 1)
-    df['date'] = df.date.apply(lambda x: datetime.strptime(x, '%Y-%m-%d'))
-    df = df.drop("url", axis= 1)
-    df = df.drop("dish", axis= 1)
-
-
+def read_data(path: str, cols: Optional[List[str]]) -> pd.DataFrame:
+    """
+    :param path: local path of the file to read
+    :param cols: cols to keep, use None for all
+    :return: the file as pandas DataFrame
+    """
+    df = pd.read_csv(path, usecols=cols)
     return df
 
-def attendance_sheet_uitlezen():
-    df = pd.read_csv("../clean_code/data/key_tag_logs.csv")
-    df['timestamp2'] = df.timestamp.apply(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S'))
-    df['date'] = df.timestamp.apply(lambda x: datetime.strptime(x[:10], '%Y-%m-%d'))
-    df['time'] = df.timestamp2.apply(lambda x: x.time())
-    df['timestamp'] = df['timestamp2']
-    df = df.drop('timestamp2', axis=1)
-    import numpy as np
-    result = pd.DataFrame(np.array(df.date), columns=['date']).drop_duplicates()
 
-    # print(df.name.unique())
-    for name in df.name.unique():
-        lunchdates = []
-        for datum in df.date.unique():
-            df2 = df[df.name == name]
-            df2 = df2[df2.date == datum]
+def clean_recipes(df: pd.DataFrame, supply_words: List[str]) -> pd.DataFrame:
+    """
+    :param supply_words: a list of words to check on
+    :param df: the recipe DataFrame
+    :return: a DataFrame with a boolean value per recipe and supply words
+    """
+    for word in supply_words:
+        df[word] = (
+            df["recipe"]
+                .str.lower()
+                .str.contains(pat=r"\b{}\b".format(word), regex=True)
+        )
+    df["date"] = pd.to_datetime(df["date"]).dt.date
+    df = df.drop("recipe", axis=1)
+    return df
 
-            dataframe_check_in = df2[df2.event == "check in"]
-            dataframe_check_in = dataframe_check_in[dataframe_check_in.time < time(12,0, 0)]
 
-            df_check_out = df2[df2.event == "check out"]
-            df_check_out = df_check_out[df_check_out.time > time(12, 0, 0)]
-            if df_check_out.shape[0] > 0 and dataframe_check_in.shape[0] > 0:
-                lunchdates.append(datum)
+def clean_attendance_sheet(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean the attendance log to check who had lunch in the office on a certain day
+    :param df: DataFrame containing the attendance log
+    :return: a DataFrame with dates and all employees lunch information
+    """
+    df["date"] = pd.to_datetime(df["timestamp"]).dt.date
+    df["time"] = pd.to_datetime(df["timestamp"]).dt.time
+    dates = df["date"].unique()
+    names = df["name"].unique()
+    lunch_df = pd.DataFrame(columns=names)
+    lunch_df["date"] = dates
+    lunch_df.index = lunch_df["date"]
+    lunch_df = lunch_df.fillna(0)
+    for i, row in df.loc[df["time"] < time(12, 0, 0)].iterrows():
+        if row["event"] == "check in":
+            lunch_df.at[row["date"], row["name"]] = 1
+        elif row["event"] == "check out":
+            lunch_df.at[row["date"], row["name"]] = 0
+    lunch_df = lunch_df.reset_index(drop=True)
+    return lunch_df
 
-        result[f"{name}"] = result.date.apply(lambda x: 1 if x in list(lunchdates) else 0)
 
-    result['date'] = result['date']#.apply(str)
-    return result
+def clean_dishwasher_runs(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    :param df: dishwasher DataFrame
+    :return: dishwasher DataFrame with parsed date
+    """
+    df["date"] = pd.to_datetime(df["date"]).dt.date
+    return df
 
-def train_model(alpha=0.1):
-    recipes = getRecipesDF()
-    attendance = attendance_sheet_uitlezen()
-    l=pd.read_csv("data/dishwasher_log.csv")
-    l["date"] = l.date.apply(lambda x: datetime.strptime(x, '%Y-%m-%d'))
 
-    df = recipes.merge(attendance,
-                    on="date",
-                       how="outer").merge(l).fillna(0)
-    reg = LinearRegression(fit_intercept=False, positive=True)\
-          .fit(df.drop(["dishwashers", "date"], axis=1),
-            df["dishwashers"])
-    return dict(zip(reg.feature_names_in_,
-            [round(c, 3) for c in reg.coef_]))
-
+def train_model(train_set: pd.DataFrame) -> dict:
+    """
+    Train a linear regression on the dishwasher dataset
+    :param train_set: the features and targets of the dishwasher data
+    :return: coefficients of the features
+    """
+    targets = train_set["dishwashers"]
+    train_set = train_set.drop(["dishwashers", "date"], axis=1)
+    lin_reg = LinearRegression(fit_intercept=False, positive=True).fit(
+        train_set, targets
+    )
+    return dict(zip(lin_reg.feature_names_in_, [round(c, 3) for c in lin_reg.coef_]))
 
 
 if __name__ == "__main__":
-
-    print(train_model())
+    recipes = read_data("data/lunch_recipes.csv", ["recipe", "date"])
+    recipes = clean_recipes(recipes, supply_words=["pan", "rasp", "kom"])
+    attendance_sheet = read_data("data/key_tag_logs.csv", None)
+    attendance_sheet = clean_attendance_sheet(attendance_sheet)
+    dishwasher_runs = read_data("data/dishwasher_log.csv", None)
+    dishwasher_runs = clean_dishwasher_runs(dishwasher_runs)
+    data_set = (
+        recipes.merge(attendance_sheet, on="date", how="outer")
+            .merge(dishwasher_runs)
+            .fillna(0)
+    )
+    results = train_model(data_set)
+    print(results)
