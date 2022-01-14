@@ -6,8 +6,6 @@ from sklearn.linear_model import LinearRegression
 import numpy as np
 import os
 
-SUPPLY_WORDS = ["pan", "rasp", "kom"]
-
 
 def get_data_path(project_data_path: str) -> Callable[[str], str]:
     """
@@ -22,7 +20,7 @@ def get_data_path(project_data_path: str) -> Callable[[str], str]:
 
 def remove_punctuation(text: str) -> List[str]:
     """
-    Cleans text by seperating all the words and removing punctuation
+    Cleans text by seperating all the words and removing punctuation.
     """
     str_list = [
         "".join(character for character in chunk if character.isalnum())
@@ -33,24 +31,26 @@ def remove_punctuation(text: str) -> List[str]:
 
 
 def read_recipes(data_path_resolver: Callable[[str], str]) -> pd.DataFrame:
-    df = pd.read_csv(
-        data_path_resolver("lunch_recipes.csv")
-    )  # Read lunch recipes dataframe.
-    for word in SUPPLY_WORDS:
+    """
+    Read recipes from disk into a clean dataframe
+    """
+    supply_words = ["pan", "rasp", "kom"]
+    df = pd.read_csv(data_path_resolver("lunch_recipes.csv"))
+    for word in supply_words:
         df[word] = df.recipe.apply(
             lambda text: remove_punctuation(text).count(word) > 0
-        )  # count the amount of times a word occurs in the recipe.
+        )
         df[f"{word}"] = df[f"{word}"].apply(lambda x: x is True)
-    df = df.drop("servings", axis=1)
-    df = df.drop("recipe", axis=1)
     df["date"] = df.date.apply(lambda x: datetime.strptime(x, "%Y-%m-%d"))
-    df = df.drop("url", axis=1)
-    df = df.drop("dish", axis=1)
+    df = df.drop(["servings", "recipe", "url", "dish"], axis=1)
 
     return df
 
 
-def read_attendance_sheet(data_path_resolver: Callable[[str], str]):
+def read_attendance_sheet(data_path_resolver: Callable[[str], str]) -> pd.DataFrame:
+    """
+    Read attendance sheet into a clean dataframe
+    """
     df = pd.read_csv(data_path_resolver("key_tag_logs.csv"))
     df["timestamp2"] = df.timestamp.apply(
         lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
@@ -62,7 +62,6 @@ def read_attendance_sheet(data_path_resolver: Callable[[str], str]):
 
     result = pd.DataFrame(np.array(df.date), columns=["date"]).drop_duplicates()
 
-    # print(df.name.unique())
     for name in df.name.unique():
         lunchdates = []
         for datum in df.date.unique():
@@ -82,12 +81,13 @@ def read_attendance_sheet(data_path_resolver: Callable[[str], str]):
         result[f"{name}"] = result.date.apply(
             lambda x: 1 if x in list(lunchdates) else 0
         )
-
-    result["date"] = result["date"]  # .apply(str)
     return result
 
 
 def read_diswasher_log(data_path_resolver: Callable[[str], str]) -> pd.DataFrame:
+    """
+    Read dishwasher log into a clean dataframe
+    """
     dishwasher_log = pd.read_csv(data_path_resolver("dishwasher_log.csv"))
     dishwasher_log["date"] = dishwasher_log.date.apply(
         lambda x: datetime.strptime(x, "%Y-%m-%d")
@@ -95,7 +95,10 @@ def read_diswasher_log(data_path_resolver: Callable[[str], str]) -> pd.DataFrame
     return dishwasher_log
 
 
-def train_model(alpha=0.1):
+def train_model() -> dict:
+    """
+    Train a linear regression on the data and return the coefficients
+    """
     data_path_resolver = get_data_path("data")
     recipes = read_recipes(data_path_resolver)
     attendance = read_attendance_sheet(data_path_resolver)
