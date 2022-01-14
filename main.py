@@ -33,7 +33,7 @@ def getRecipesDF():
     return df
 
 def attendance_sheet_uitlezen():
-    df = pd.read_csv("../clean_code/data/key_tag_logs.csv")
+    df = pd.read_csv("data/key_tag_logs.csv")
     df['timestamp2'] = df.timestamp.apply(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S'))
     df['date'] = df.timestamp.apply(lambda x: datetime.strptime(x[:10], '%Y-%m-%d'))
     df['time'] = df.timestamp2.apply(lambda x: x.time())
