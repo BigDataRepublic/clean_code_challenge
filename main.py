@@ -3,12 +3,12 @@ from datetime import *
 import pandas as pd
 from sklearn.linear_model import LinearRegression, RidgeCV
 
-supply_words = ["pan", "rasp", "kom"]
+SUPPLY_WORDS = ["pan", "rasp", "kom"]
 
 
 def getRecipesDF():
     df = pd.read_csv("data/lunch_recipes.csv")  # Read lunch recipes dataframe.
-    for wrd in supply_words:
+    for word in SUPPLY_WORDS:
 
         def hulp_clean(text):
             # This function cleans text by seperating all the words and removing punctution
@@ -19,10 +19,10 @@ def getRecipesDF():
             str_list = [str.lower() for str in str_list]
             return str_list
 
-        df[f"{wrd}"] = df.recipe.apply(
-            lambda text: hulp_clean(text).count(wrd) > 0
+        df[word] = df.recipe.apply(
+            lambda text: hulp_clean(text).count(word) > 0
         )  ## count the amount of times a word occurs in the recipe.
-        df[f"{wrd}"] = df[f"{wrd}"].apply(lambda x: x is True)
+        df[f"{word}"] = df[f"{word}"].apply(lambda x: x is True)
     df = df.drop("servings", axis=1)
     df = df.drop("recipe", axis=1)
     df["date"] = df.date.apply(lambda x: datetime.strptime(x, "%Y-%m-%d"))
