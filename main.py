@@ -1,84 +1,138 @@
+from datetime import datetime, time, date
+from os import path
+from typing import List
+
 import pandas as pd
-from sklearn.linear_model import LinearRegression, RidgeCV
+from sklearn.linear_model import LinearRegression
 
-from datetime import *
-
-supply_words = ["pan", "rasp", "kom"]
+extra_dishes_contributing_ingredients = ["pan", "rasp", "kom"]
 
 
+class DishWasher:
+    def __init__(self):
+        self.lunch_time = time(hour=12, minute=0, second=0)
+        self.check_out_event = "check out"
+        self.check_in_event = "check in"
 
+    def _remove_punctuation(self, text: str) -> str:
+        return "".join(character for character in text if character.isalnum())
 
+    def _extract_words_from_recipe(self, text: str) -> List[str]:
+        lowercase_text = text.lower()
+        lowercase_cleaned_text = self._remove_punctuation(lowercase_text)
+        lowercase_cleaned_words = lowercase_cleaned_text.split()
+        return lowercase_cleaned_words
 
-def getRecipesDF():
-    df = pd.read_csv("data/lunch_recipes.csv")  # Read lunch recipes dataframe.
-    for wrd in supply_words:
-        def hulp_clean(text):
-            # This function cleans text by seperating all the words and removing punctution
-            #
-            # text:str
+    def _contains_ingredient(self, text: str, ingredient: str) -> bool:
+        return self._extract_words_from_recipe(text).count(ingredient) > 0
 
-            str_list = [''.join(O for O in str if O.isalnum()) for str in text.split()]
-            str_list = [str.lower() for str in str_list]
-            return str_list
+    def _load_recipes(self) -> pd.DataFrame:
+        script_path = path.dirname(path.abspath(__file__))
+        file_path = path.join(script_path, "data/lunch_recipes.csv")
+        lunch_recipes = pd.read_csv(file_path)
+        return lunch_recipes
 
-        df[f"{wrd}"] = df.recipe.apply(lambda text: hulp_clean(text).count(wrd) >0) ## count the amount of times a word occurs in the recipe.
-        df[f"{wrd}"] = df[f"{wrd}"].apply(lambda x: x is True)
-    df = df.drop('servings', axis= 1)
-    df = df.drop('recipe', axis= 1)
-    df['date'] = df.date.apply(lambda x: datetime.strptime(x, '%Y-%m-%d'))
-    df = df.drop("url", axis= 1)
-    df = df.drop("dish", axis= 1)
+    def _check_ingredients_in_recipes(
+        self, lunch_recipes: pd.DataFrame
+    ) -> pd.DataFrame:
+        for ingredient in extra_dishes_contributing_ingredients:
+            lunch_recipes[f"{ingredient}"] = lunch_recipes.recipe.apply(
+                self._contains_ingredient, ingredient=ingredient
+            )
+        columns_to_remove = ["servings", "recipe", "url", "dish"]
+        lunch_recipes.drop(columns=columns_to_remove, inplace=True)
+        lunch_recipes["date"] = pd.to_datetime(lunch_recipes["date"])
+        return lunch_recipes
 
+    def _load_key_tag_logs(
+        self,
+    ) -> pd.DataFrame:
+        script_path = path.dirname(path.abspath(__file__))
+        file_path = path.join(script_path, "data/key_tag_logs.csv")
+        key_tag_logs = pd.read_csv(file_path)
+        return key_tag_logs
 
-    return df
+    def _was_present_at_lunch(
+        self, name: str, lunch_date: date, key_tag_logs: pd.DataFrame
+    ) -> bool:
+        person_key_tag_entries = key_tag_logs[key_tag_logs.name == name]
+        person_key_tag_entries = person_key_tag_entries[
+            person_key_tag_entries["datetime"].dt.date == lunch_date
+        ]
+        person_check_ins_before_lunch = person_key_tag_entries[
+            (person_key_tag_entries["event"] == self.check_in_event)
+            & (person_key_tag_entries["datetime"].dt.time < self.lunch_time)
+        ]
+        person_check_outs_after_lunch = person_key_tag_entries[
+            (person_key_tag_entries["event"] == self.check_out_event)
+            & (person_key_tag_entries["datetime"].dt.time < self.lunch_time)
+        ]
+        was_present_at_lunch = (
+            person_check_ins_before_lunch.shape[0] > 0
+            and person_check_outs_after_lunch.shape[0] > 0
+        )
+        return was_present_at_lunch
 
-def attendance_sheet_uitlezen():
-    df = pd.read_csv("../clean_code/data/key_tag_logs.csv")
-    df['timestamp2'] = df.timestamp.apply(lambda x: datetime.strptime(x, '%Y-%m-%d %H:%M:%S'))
-    df['date'] = df.timestamp.apply(lambda x: datetime.strptime(x[:10], '%Y-%m-%d'))
-    df['time'] = df.timestamp2.apply(lambda x: x.time())
-    df['timestamp'] = df['timestamp2']
-    df = df.drop('timestamp2', axis=1)
-    import numpy as np
-    result = pd.DataFrame(np.array(df.date), columns=['date']).drop_duplicates()
+    def _create_attendance_sheet(
+        self,
+    ):
+        key_tag_logs = self._load_key_tag_logs()
+        key_tag_logs["datetime"] = pd.to_datetime(key_tag_logs["timestamp"])
+        unique_key_tag_log_dates = key_tag_logs["datetime"].dt.date.unique()
+        attendance_sheet = pd.DataFrame(
+            data=pd.to_datetime(unique_key_tag_log_dates), columns=["date"]
+        )
 
-    # print(df.name.unique())
-    for name in df.name.unique():
-        lunchdates = []
-        for datum in df.date.unique():
-            df2 = df[df.name == name]
-            df2 = df2[df2.date == datum]
+        for name in key_tag_logs.name.unique():
+            dates_present_for_lunch = []
+            for log_date in unique_key_tag_log_dates:
+                if self._was_present_at_lunch(
+                    name=name, lunch_date=log_date, key_tag_logs=key_tag_logs
+                ):
+                    dates_present_for_lunch.append(log_date)
 
-            dataframe_check_in = df2[df2.event == "check in"]
-            dataframe_check_in = dataframe_check_in[dataframe_check_in.time < time(12,0, 0)]
+            attendance_sheet[f"{name}"] = attendance_sheet["date"].apply(
+                lambda x: 1 if x in list(dates_present_for_lunch) else 0
+            )
 
-            df_check_out = df2[df2.event == "check out"]
-            df_check_out = df_check_out[df_check_out.time > time(12, 0, 0)]
-            if df_check_out.shape[0] > 0 and dataframe_check_in.shape[0] > 0:
-                lunchdates.append(datum)
+        return attendance_sheet
 
-        result[f"{name}"] = result.date.apply(lambda x: 1 if x in list(lunchdates) else 0)
+    def _get_lunch_ingredients(self):
+        lunch_recipes = self._load_recipes()
+        return self._check_ingredients_in_recipes(lunch_recipes=lunch_recipes)
 
-    result['date'] = result['date']#.apply(str)
-    return result
+    def _load_dishwasher_log(self):
+        script_path = path.dirname(path.abspath(__file__))
+        file_path = path.join(script_path, "data/dishwasher_log.csv")
+        dishwasher_log = pd.read_csv(file_path)
+        dishwasher_log["date"] = dishwasher_log.date.apply(
+            lambda x: datetime.strptime(x, "%Y-%m-%d")
+        )
+        return dishwasher_log
 
-def train_model(alpha=0.1):
-    recipes = getRecipesDF()
-    attendance = attendance_sheet_uitlezen()
-    l=pd.read_csv("data/dishwasher_log.csv")
-    l["date"] = l.date.apply(lambda x: datetime.strptime(x, '%Y-%m-%d'))
+    def train_model(self):
+        lunch_ingredients = self._get_lunch_ingredients()
+        attendance_sheet = self._create_attendance_sheet()
+        dishwasher_log = self._load_dishwasher_log()
+        default_value = 0
 
-    df = recipes.merge(attendance,
-                    on="date",
-                       how="outer").merge(l).fillna(0)
-    reg = LinearRegression(fit_intercept=False, positive=True)\
-          .fit(df.drop(["dishwashers", "date"], axis=1),
-            df["dishwashers"])
-    return dict(zip(reg.feature_names_in_,
-            [round(c, 3) for c in reg.coef_]))
-
+        merged_logs = (
+            lunch_ingredients.merge(right=attendance_sheet, on="date", how="outer")
+            .merge(right=dishwasher_log, how="inner")
+            .fillna(value=default_value)
+        )
+        X = merged_logs.drop(columns=["dishwashers", "date"])
+        y = merged_logs["dishwashers"]
+        regressor = LinearRegression(fit_intercept=False, positive=True)
+        fitted_regression = regressor.fit(X=X, y=y)
+        return dict(
+            zip(
+                fitted_regression.feature_names_in_,
+                [round(c, 3) for c in fitted_regression.coef_],
+            )
+        )
 
 
 if __name__ == "__main__":
-
-    print(train_model())
+    dishwasher = DishWasher()
+    print(dishwasher.train_model())
