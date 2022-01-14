@@ -1,27 +1,30 @@
-from datetime import *
+from typing import List
+from datetime import datetime, time
 
 import pandas as pd
-from sklearn.linear_model import LinearRegression, RidgeCV
+from sklearn.linear_model import LinearRegression
 
 SUPPLY_WORDS = ["pan", "rasp", "kom"]
+
+
+def remove_punctuation(text: str) -> List[str]:
+    """
+    Cleans text by seperating all the words and removing punctuation
+    """
+    str_list = [
+        "".join(character for character in chunk if character.isalnum())
+        for chunk in text.split()
+    ]
+    str_list = [str.lower() for str in str_list]
+    return str_list
 
 
 def getRecipesDF():
     df = pd.read_csv("data/lunch_recipes.csv")  # Read lunch recipes dataframe.
     for word in SUPPLY_WORDS:
-
-        def hulp_clean(text):
-            # This function cleans text by seperating all the words and removing punctution
-            #
-            # text:str
-
-            str_list = ["".join(O for O in str if O.isalnum()) for str in text.split()]
-            str_list = [str.lower() for str in str_list]
-            return str_list
-
         df[word] = df.recipe.apply(
-            lambda text: hulp_clean(text).count(word) > 0
-        )  ## count the amount of times a word occurs in the recipe.
+            lambda text: remove_punctuation(text).count(word) > 0
+        )  # count the amount of times a word occurs in the recipe.
         df[f"{word}"] = df[f"{word}"].apply(lambda x: x is True)
     df = df.drop("servings", axis=1)
     df = df.drop("recipe", axis=1)
@@ -73,10 +76,16 @@ def attendance_sheet_uitlezen():
 def train_model(alpha=0.1):
     recipes = getRecipesDF()
     attendance = attendance_sheet_uitlezen()
-    l = pd.read_csv("data/dishwasher_log.csv")
-    l["date"] = l.date.apply(lambda x: datetime.strptime(x, "%Y-%m-%d"))
+    dishwasher_log = pd.read_csv("data/dishwasher_log.csv")
+    dishwasher_log["date"] = dishwasher_log.date.apply(
+        lambda x: datetime.strptime(x, "%Y-%m-%d")
+    )
 
-    df = recipes.merge(attendance, on="date", how="outer").merge(l).fillna(0)
+    df = (
+        recipes.merge(attendance, on="date", how="outer")
+        .merge(dishwasher_log)
+        .fillna(0)
+    )
     reg = LinearRegression(fit_intercept=False, positive=True).fit(
         df.drop(["dishwashers", "date"], axis=1), df["dishwashers"]
     )
