@@ -1,0 +1,24 @@
+fail_fast: true
+
+repos:
+  - repo: https://github.com/ambv/black
+    rev: 21.12b0
+    hooks:
+      - id: black
+        entry: bash -c 'cd src/'
+        args: [ src, --diff, --check ]
+
+  - repo: https://github.com/pre-commit/mirrors-pylint
+    rev: v3.0.0a3
+    hooks:
+      - id: pylint
+        entry: bash -c 'cd src/'
+        args: [ src, --enable=unused-import ]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v0.930
+    hooks:
+      - id: mypy
+        exclude: ^tests/
+        entry: bash -c 'cd src/'
+        args: [ --strict ]
