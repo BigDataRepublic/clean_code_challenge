@@ -1,10 +1,23 @@
-from typing import List
+from typing import List, Callable
 from datetime import datetime, time
 
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+import numpy as np
+import os
 
 SUPPLY_WORDS = ["pan", "rasp", "kom"]
+
+
+def get_data_path(project_data_path: str) -> Callable[[str], str]:
+    """
+    Return a method that allows for resolving a full data path given a filename
+    """
+
+    def _get_data_path(filename: str) -> str:
+        return os.path.join("data", filename)
+
+    return _get_data_path
 
 
 def remove_punctuation(text: str) -> List[str]:
@@ -19,8 +32,10 @@ def remove_punctuation(text: str) -> List[str]:
     return str_list
 
 
-def getRecipesDF():
-    df = pd.read_csv("data/lunch_recipes.csv")  # Read lunch recipes dataframe.
+def read_recipes(data_path_resolver: Callable[[str], str]) -> pd.DataFrame:
+    df = pd.read_csv(
+        data_path_resolver("lunch_recipes.csv")
+    )  # Read lunch recipes dataframe.
     for word in SUPPLY_WORDS:
         df[word] = df.recipe.apply(
             lambda text: remove_punctuation(text).count(word) > 0
@@ -35,8 +50,8 @@ def getRecipesDF():
     return df
 
 
-def attendance_sheet_uitlezen():
-    df = pd.read_csv("data/key_tag_logs.csv")
+def read_attendance_sheet(data_path_resolver: Callable[[str], str]):
+    df = pd.read_csv(data_path_resolver("key_tag_logs.csv"))
     df["timestamp2"] = df.timestamp.apply(
         lambda x: datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
     )
@@ -44,7 +59,6 @@ def attendance_sheet_uitlezen():
     df["time"] = df.timestamp2.apply(lambda x: x.time())
     df["timestamp"] = df["timestamp2"]
     df = df.drop("timestamp2", axis=1)
-    import numpy as np
 
     result = pd.DataFrame(np.array(df.date), columns=["date"]).drop_duplicates()
 
@@ -73,13 +87,19 @@ def attendance_sheet_uitlezen():
     return result
 
 
-def train_model(alpha=0.1):
-    recipes = getRecipesDF()
-    attendance = attendance_sheet_uitlezen()
-    dishwasher_log = pd.read_csv("data/dishwasher_log.csv")
+def read_diswasher_log(data_path_resolver: Callable[[str], str]) -> pd.DataFrame:
+    dishwasher_log = pd.read_csv(data_path_resolver("dishwasher_log.csv"))
     dishwasher_log["date"] = dishwasher_log.date.apply(
         lambda x: datetime.strptime(x, "%Y-%m-%d")
     )
+    return dishwasher_log
+
+
+def train_model(alpha=0.1):
+    data_path_resolver = get_data_path("data")
+    recipes = read_recipes(data_path_resolver)
+    attendance = read_attendance_sheet(data_path_resolver)
+    dishwasher_log = read_diswasher_log(data_path_resolver)
 
     df = (
         recipes.merge(attendance, on="date", how="outer")
@@ -90,8 +110,3 @@ def train_model(alpha=0.1):
         df.drop(["dishwashers", "date"], axis=1), df["dishwashers"]
     )
     return dict(zip(reg.feature_names_in_, [round(c, 3) for c in reg.coef_]))
-
-
-if __name__ == "__main__":
-
-    print(train_model())
