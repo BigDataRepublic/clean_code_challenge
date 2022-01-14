@@ -1,0 +1,9 @@
+name: clean_code
+channels:
+#    - use default channels
+dependencies:
+  - python
+  - pip
+  - pip:
+      - -r ./requirements/base.txt
+      - -e .
