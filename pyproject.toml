@@ -16,7 +16,7 @@ flake8 = "^4.0.1"
 pre-commit = "^2.16.0"
 
 [tool.poetry.scripts]
-clean_code = 'clean_code_challenge.main:main'
+clean_code = 'clean_code_challenge.main:train_model'
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
