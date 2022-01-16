@@ -54,4 +54,4 @@ COPY --from=base /code .
 COPY --from=base /opt/venv /opt/venv
 COPY --from=base /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 
-ENTRYPOINT ["/opt/venv/bin/vaidemo"]
+ENTRYPOINT ["/opt/venv/bin/dishwasher"]
